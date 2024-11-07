@@ -18,7 +18,7 @@ import admin
 class NetFunctions():
     #Saves traffic to a pcap file, takes file name and interface as arguments
     def NetCap(dest, interface):
-        scapy.wrpcap(dest, scapy.sniff(iface=interface))
+        scapy.wrpcap(dest, scapy.sniff(iface=interface, store=0))
 
     #Gets the IP for the device
     def get_ip():
