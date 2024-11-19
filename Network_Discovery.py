@@ -96,7 +96,7 @@ def get_mac_by_ip_SELF(ip_address):
     if (os.name == 'nt'):
         return get_mac_by_ip_windows(ip_address)
     else:
-        return NetFunctions.get_mac_by_ip_linux(ip_address)
+        return get_mac_by_ip_linux(ip_address)
 
 def get_mac_by_ip(target_address, ip_address):
     ether = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")  # Broadcast MAC address

