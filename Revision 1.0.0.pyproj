@@ -28,6 +28,7 @@
     <Compile Include="Network_Discovery.py" />
     <Compile Include="Revision_1.0.0.py" />
     <Compile Include="Revision_1.0.1.py" />
+    <Compile Include="Traffic_Forwarder.py" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
